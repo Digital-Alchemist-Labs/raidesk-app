@@ -15,12 +15,12 @@ export function PlanLayout() {
   if (!session?.plans) {
     return (
       <div className="h-full flex items-center justify-center p-6">
-        <p className="text-white/60">플랜을 생성 중입니다...</p>
+        <p className="text-gray-500">플랜을 생성 중입니다...</p>
       </div>
     );
   }
 
-  const selectedPlan = session.plans.find(p => p.id === selectedPlanId);
+  const selectedPlan = session.plans.find((p) => p.id === selectedPlanId) || null;
 
   const handleSelectPlan = (plan: Plan) => {
     setSelectedPlanId(plan.id);
@@ -30,7 +30,7 @@ export function PlanLayout() {
     if (!selectedPlan) return;
 
     selectPlan(selectedPlan);
-    
+
     addMessage({
       role: 'assistant',
       content: `${selectedPlan.title} 플랜을 선택하셨습니다. 이 플랜으로 진행하시겠습니까?`,
@@ -40,10 +40,9 @@ export function PlanLayout() {
   };
 
   const handleModifyPlan = async (modifications: string) => {
-    if (!selectedPlan) return;
+    if (!selectedPlan || !session) return;
 
     setLoading(true);
-    
     try {
       const response = await apiClient.refinePlan({
         planId: selectedPlan.id,
@@ -61,19 +60,18 @@ export function PlanLayout() {
         metadata: { modifiedPlan: response.plan },
       });
 
-      // Update the plan in the store
-      const updatedPlans = session.plans?.map(p =>
+      const updatedPlans = session.plans?.map((p) =>
         p.id === selectedPlan.id ? response.plan : p
       );
-      
+
       if (updatedPlans) {
         useAppStore.getState().setPlans(updatedPlans);
       }
     } catch (error) {
-      console.error('Failed to modify plan:', error);
+      console.error('Failed to modify plan', error);
       addMessage({
         role: 'assistant',
-        content: '플랜 수정 중 오류가 발생했습니다. 다시 시도해주세요.',
+        content: '플랜 수정 중 오류가 발생했습니다. 다시 시도해 주세요.',
       });
     } finally {
       setLoading(false);
@@ -82,53 +80,73 @@ export function PlanLayout() {
 
   return (
     <div className="h-full flex flex-col">
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-6">
-        <h2 className="text-2xl font-bold text-gray-900">인허가 전략 플랜</h2>
+        <h2 className="text-2xl font-bold text-gray-900">
+          {selectedPlan ? '선택한 인허가 전략 플랜' : '인허가 전략 플랜'}
+        </h2>
         <p className="text-sm text-gray-600 mt-1">
-          4가지 전략 중 하나를 선택하세요
+          {selectedPlan
+            ? '선택한 플랜의 상세 내용과 타임라인/요구사항을 검토하고 수정/확정할 수 있습니다.'
+            : '4가지 전략 중 하나를 선택하세요.'}
         </p>
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Plan Cards Grid */}
-        <div className={`overflow-y-auto p-4 transition-all duration-300 ${
-          selectedPlan ? 'w-1/3' : 'w-full'
-        }`}>
-          <div className="grid grid-cols-1 gap-4">
-            {session.plans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                selected={plan.id === selectedPlanId}
-                onClick={() => handleSelectPlan(plan)}
-              />
-            ))}
-          </div>
-        </div>
+      <div className="flex-1 overflow-hidden relative">
 
-        {/* Plan Detail */}
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
+
+          {/* ================================
+                  📌 플랜 목록 전체 화면
+              ================================ */}
+          {!selectedPlan && (
+            <motion.div
+              key="plan-list"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.25 }}
+              className="absolute inset-0 overflow-y-auto p-6 bg-white"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {session.plans.map((plan: Plan) => (
+                  <PlanCard
+                    key={plan.id}
+                    plan={plan}
+                    selected={plan.id === selectedPlanId}
+                    onClick={() => handleSelectPlan(plan)}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* ================================
+                    📌 플랜 디테일 전체 화면
+              ================================ */}
           {selectedPlan && (
             <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 50 }}
-              transition={{ duration: 0.3 }}
-              className="w-2/3 border-l border-white/10 overflow-hidden"
+              key="plan-detail"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.25 }}
+              className="absolute inset-0 bg-white overflow-y-auto"
             >
               <PlanDetail
                 plan={selectedPlan}
                 onModify={handleModifyPlan}
                 onConfirm={handleConfirmPlan}
+                onBack={() => setSelectedPlanId(null)}
               />
             </motion.div>
           )}
+
         </AnimatePresence>
+
       </div>
     </div>
   );
 }
-
-
