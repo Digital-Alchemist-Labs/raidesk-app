@@ -49,6 +49,13 @@ export function ChatInterface() {
     return keywords.some(keyword => normalized.includes(keyword));
   };
 
+  // 수정 키워드 체크
+  const isModifyKeyword = (msg: string): boolean => {
+    const keywords = ['수정', '다시', '재입력', '변경', '아니', '틀려', '아니야', 'no'];
+    const normalized = msg.toLowerCase().trim();
+    return keywords.some(keyword => normalized.includes(keyword));
+  };
+
   const handleSend = async (message: string) => {
     if (!session) return;
 
@@ -94,10 +101,17 @@ export function ChatInterface() {
               content: mockResponses.acknowledgeCategory,
             });
             setStep(ConversationStep.PRODUCT_CATEGORY);
+          } else if (isModifyKeyword(message)) {
+            // 재분류 요청
+            addMessage({
+              role: 'assistant',
+              content: '의료기기 개념을 다시 입력해주세요. 더 자세히 설명해주시면 정확한 분류가 가능합니다.',
+            });
+            setStep(ConversationStep.CONCEPT_INPUT);
           } else {
             addMessage({
               role: 'assistant',
-              content: '분류 결과를 검토해주세요. 맞다면 "진행" 또는 "확인"을 입력해주세요.',
+              content: '분류 결과를 검토해주세요.\n\n✅ 맞다면: "확인" 또는 "진행"\n🔄 다시 하려면: "수정" 또는 "다시"',
             });
           }
           break;
@@ -128,10 +142,17 @@ export function ChatInterface() {
             });
             
             setStep(ConversationStep.PURPOSE_MECHANISM);
+          } else if (isModifyKeyword(message)) {
+            // 분류 단계로 돌아가기
+            addMessage({
+              role: 'assistant',
+              content: '분류 단계로 돌아갑니다. 의료기기 개념을 다시 입력해주세요.',
+            });
+            setStep(ConversationStep.CONCEPT_INPUT);
           } else {
             addMessage({
               role: 'assistant',
-              content: '품목 분류를 확인해주세요. 계속 진행하려면 "진행"을 입력해주세요.',
+              content: '품목 분류를 확인해주세요.\n\n✅ 맞다면: "확인" 또는 "진행"\n🔄 다시 하려면: "수정" 또는 "다시"',
             });
           }
           break;
@@ -161,10 +182,17 @@ export function ChatInterface() {
               
               setStep(ConversationStep.PLAN_GENERATION);
             }
+          } else if (isModifyKeyword(message)) {
+            // 처음부터 다시 시작
+            addMessage({
+              role: 'assistant',
+              content: '사용 목적과 작용 원리를 다시 생성하시겠습니까?\n\n의료기기 개념을 처음부터 다시 입력해주세요.',
+            });
+            setStep(ConversationStep.CONCEPT_INPUT);
           } else {
             addMessage({
               role: 'assistant',
-              content: '사용 목적과 작용 원리를 검토해주세요. 맞다면 "진행"을 입력해서 인허가 전략을 생성하세요.',
+              content: '사용 목적과 작용 원리를 검토해주세요.\n\n✅ 맞다면: "확인" 또는 "진행" (인허가 전략 생성)\n🔄 다시 하려면: "수정" 또는 "다시" (처음부터)',
             });
           }
           break;
@@ -177,10 +205,41 @@ export function ChatInterface() {
               role: 'assistant',
               content: '우측의 플랜 카드를 클릭하여 상세 내용을 확인하실 수 있습니다. 마음에 드는 플랜을 선택해주세요!',
             });
+          } else if (isModifyKeyword(message)) {
+            // 플랜 재생성
+            addMessage({
+              role: 'assistant',
+              content: '플랜을 다시 생성하시겠습니까?\n\n"재생성" 입력 시 새로운 플랜을 생성합니다.\n"처음부터" 입력 시 개념 입력부터 다시 시작합니다.',
+            });
+          } else if (message.includes('재생성') && session.classification && session.category && session.purposeMechanism) {
+            // 플랜만 다시 생성
+            addMessage({
+              role: 'assistant',
+              content: '새로운 인허가 전략을 생성하고 있습니다...',
+            });
+
+            const plansResponse = await apiClient.generatePlans({
+              classification: session.classification,
+              category: session.category,
+              purposeMechanism: session.purposeMechanism,
+            });
+            
+            setPlans(plansResponse.plans);
+            
+            addMessage({
+              role: 'assistant',
+              content: '새로운 전략이 생성되었습니다! 우측에서 확인해주세요.',
+            });
+          } else if (message.includes('처음부터')) {
+            addMessage({
+              role: 'assistant',
+              content: '처음부터 다시 시작합니다. 의료기기 개념을 입력해주세요.',
+            });
+            setStep(ConversationStep.CONCEPT_INPUT);
           } else {
             addMessage({
               role: 'assistant',
-              content: '플랜 카드를 클릭하여 상세 내용을 확인하실 수 있습니다. 수정이 필요하시면 해당 플랜을 선택 후 수정 요청을 해주세요.',
+              content: '플랜 카드를 클릭하여 상세 내용을 확인하실 수 있습니다.\n\n🔄 플랜 재생성: "재생성"\n⏮ 처음부터: "처음부터"\n\n또는 해당 플랜을 선택 후 수정 요청을 해주세요.',
             });
           }
           break;
@@ -260,14 +319,14 @@ export function ChatInterface() {
           session.currentStep === ConversationStep.CONCEPT_INPUT
             ? '의료기기 아이디어를 설명해주세요...'
             : session.currentStep === ConversationStep.DEVICE_CLASSIFICATION
-            ? '분류 결과를 확인하셨다면 "진행"을 입력하세요...'
+            ? '확인: "진행" | 수정: "다시"'
             : session.currentStep === ConversationStep.PRODUCT_CATEGORY
-            ? '품목 분류를 확인하셨다면 "진행"을 입력하세요...'
+            ? '확인: "진행" | 수정: "다시"'
             : session.currentStep === ConversationStep.PURPOSE_MECHANISM
-            ? '사용 목적과 작용 원리를 확인하셨다면 "진행"을 입력하세요...'
+            ? '확인: "진행" | 수정: "다시"'
             : session.currentStep === ConversationStep.PLAN_GENERATION || 
               session.currentStep === ConversationStep.PLAN_REVIEW
-            ? '우측의 플랜을 선택하거나 질문을 입력하세요...'
+            ? '재생성: "재생성" | 처음부터: "처음부터" | 질문 입력...'
             : '메시지를 입력하세요...'
         }
       />

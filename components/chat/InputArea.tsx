@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, KeyboardEvent } from 'react';
+import { useState, KeyboardEvent, useRef } from 'react';
 import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -16,6 +16,7 @@ export function InputArea({
   placeholder = '메시지를 입력하세요...',
 }: InputAreaProps) {
   const [input, setInput] = useState('');
+  const isComposingRef = useRef(false);
 
   const handleSend = () => {
     if (input.trim() && !disabled) {
@@ -25,10 +26,19 @@ export function InputArea({
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 한글 조합 중일 때는 Enter 키 무시
+    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleCompositionStart = () => {
+    isComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = () => {
+    isComposingRef.current = false;
   };
 
   return (
@@ -38,6 +48,8 @@ export function InputArea({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           disabled={disabled}
           placeholder={placeholder}
           rows={1}
